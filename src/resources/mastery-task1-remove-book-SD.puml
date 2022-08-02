@@ -1,0 +1,42 @@
+'PARTICIPANTS: use this file for creating the remove book from catalog diagram in mastery task 01
+@startuml
+title RemoveBookFromCatalog
+
+actor Client
+participant "Load Balancer/ECS" as LoadBalancer
+participant RemoveBookFromCatalogActivity
+participant CatalogDao
+database DynamoDB
+
+Client -> LoadBalancer : HTTP request
+activate Client
+activate LoadBalancer
+LoadBalancer -> RemoveBookFromCatalogActivity :  execute(RemoveBookFromCatalogRequest)
+activate RemoveBookFromCatalogActivity
+RemoveBookFromCatalogActivity -> CatalogDao : getLatestVersionOfBook(bookId)
+CatalogDao -> DynamoDB : query for latest version of book
+activate DynamoDB
+alt if bookId does not exist or book is not active
+    CatalogDao <-- DynamoDB : book is null or book is Inactive
+    RemoveBookFromCatalogActivity <-- CatalogDao : throw BookNotFoundException
+    LoadBalancer <-- RemoveBookFromCatalogActivity : transform to KindlePublishingClientException
+    Client <-- LoadBalancer : 400 Response
+else else, continue
+end
+CatalogDao <-- DynamoDB : book data
+deactivate DynamoDB
+CatalogDao -> CatalogDao : removeBookFromCatalog()
+CatalogDao -> CatalogDao: set Book to Inactive
+CatalogDao -> DynamoDB : save Book
+activate DynamoDB
+CatalogDao <-- DynamoDB : Book
+deactivate DynamoDB
+RemoveBookFromCatalogActivity <-- CatalogDao : return CatalogItemVersion
+RemoveBookFromCatalogActivity --> RemoveBookFromCatalogActivity : create RemoveBookFromCatalogResponse
+LoadBalancer <-- RemoveBookFromCatalogActivity : return RemoveBookFromCatalogResponse
+deactivate RemoveBookFromCatalogActivity
+deactivate LoadBalancer
+Client <-- LoadBalancer : 200 Response w/ data
+deactivate Client
+
+@enduml
